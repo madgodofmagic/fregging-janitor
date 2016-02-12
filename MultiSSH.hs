@@ -59,7 +59,7 @@ demangle_server serverstring =
         (p:[]) -> if (((readMaybe p) :: Maybe Integer) == Nothing) then do
           putStrLn $ "Port not an integer: " ++ p ++ " in " ++ address
           return Nothing
-                           else return $ Just (ServerAddress (address) $ read $ p)
+                           else return $ Just (ServerAddress (address) $ read p)
         (_:_) -> do
           putStrLn $ "Ignoring bogus line: " ++ serverstring
           return Nothing
