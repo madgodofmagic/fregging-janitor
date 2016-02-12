@@ -53,13 +53,13 @@ block = interact $ take 1
 
 demangle_server :: [Char] -> IO (Maybe ServerAddress)
 demangle_server serverstring =
-  let (address:port) = T.splitOn (T.pack ":") (T.pack serverstring)
+  let (address:port) = map T.unpack $ T.splitOn (T.pack ":") (T.pack serverstring)
   in case port of
-        [] -> return $ Just (ServerAddress (T.unpack address) 22)
-        (p:[]) -> if (((readMaybe $ T.unpack p) :: Maybe Integer) == Nothing) then do
-          putStrLn $ "Port not an integer: " ++ T.unpack p ++ " in " ++ T.unpack address
+        [] -> return $ Just (ServerAddress (address) 22)
+        (p:[]) -> if (((readMaybe $ p) :: Maybe Integer) == Nothing) then do
+          putStrLn $ "Port not an integer: " ++ p ++ " in " ++ address
           return Nothing
-                           else return $ Just (ServerAddress (T.unpack address) $ read $ T.unpack p)
+                           else return $ Just (ServerAddress (address) $ read $ p)
         (_:_) -> do
           putStrLn $ "Ignoring bogus line: " ++ serverstring
           return Nothing
