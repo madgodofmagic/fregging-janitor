@@ -10,6 +10,7 @@ import Network.SSH.Client.SimpleSSH
 import Control.Concurrent
 import System.Environment
 import System.Posix.User
+import Text.Read
 import qualified Data.Text as T
 data SSHEnv = SSHEnv String String String String
 data ServerAddress = ServerAddress String Integer
@@ -32,7 +33,7 @@ runCommandOnHost host port username command = do
   let client = withSessionKey host port known_hosts username pubkey privkey passphrase
   res <- runSimpleSSH $ client $ buildCommandAction command
   case res of
-    Left err -> putStrLn $ show err ++ " on " ++ host
+    Left err -> putStrLn $ show err ++ " error raised on " ++ host
     Right goodres -> print goodres
 
 buildCommandAction :: String -> Session -> SimpleSSH Result
@@ -55,7 +56,10 @@ demangle_server serverstring =
   let (address:port) = T.splitOn (T.pack ":") (T.pack serverstring)
   in case port of
         [] -> return $ Just (ServerAddress (T.unpack address) 22)
-        (p:[]) -> return $ Just (ServerAddress (T.unpack address) $ read $ T.unpack p)
+        (p:[]) -> if (((readMaybe $ T.unpack p) :: Maybe Integer) == Nothing) then do
+          putStrLn $ "Port not an integer: " ++ T.unpack p ++ " in " ++ T.unpack address
+          return Nothing
+                           else return $ Just (ServerAddress (T.unpack address) $ read $ T.unpack p)
         (_:_) -> do
           putStrLn $ "Ignoring bogus line: " ++ serverstring
           return Nothing
