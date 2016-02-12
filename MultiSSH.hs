@@ -2,20 +2,26 @@
  import Control.Concurrent
  import System.Environment
  import System.Posix.User
-
- runCommandOnHost :: String -> String -> String -> IO ()
- runCommandOnHost host username command = do
-   local_user <- getLoginName
-   uentry <- getUserEntryForName local_user
+ import qualified Data.Text as T
+ data SSHEnv = SSHEnv String String String String
+ data ServerAddress = ServerAddress String Integer
+ 
+ buildenv :: [Char] -> IO SSHEnv
+ buildenv key_algorithm = do
+   uentry <- (getLoginName >>= getUserEntryForName)
    -- assume no passphrase
    let passphrase = ""
-       homedir = homeDirectory uentry
-       luser_prefix = homedir ++ "/.ssh"
-       known_hosts = luser_prefix ++ "/known_hosts"
+       ssh_dir = (homeDirectory uentry) ++ "/.ssh"
+       known_hosts = ssh_dir ++ "/known_hosts"
+       pubkey = ssh_dir ++ "/id_" ++ key_algorithm ++ ".pub"
+       privkey = ssh_dir ++ "/id_" ++ key_algorithm
+   return $ SSHEnv known_hosts pubkey privkey passphrase
+
+ runCommandOnHost :: String -> Integer -> String -> String -> IO ()
+ runCommandOnHost host port username command = do
    -- assume rsa
-       pubkey = luser_prefix ++ "/id_rsa.pub"
-       privkey = luser_prefix ++ "/id_rsa"
-       client = withSessionKey host 22 known_hosts username pubkey privkey passphrase
+   (SSHEnv known_hosts pubkey privkey passphrase) <- buildenv "rsa"
+   let    client = withSessionKey host port known_hosts username pubkey privkey passphrase
    res <- runSimpleSSH $ client $ buildCommandAction command
    case res of
      Left err -> putStrLn $ show err ++ " on " ++ host
@@ -28,14 +34,30 @@
 
  dispatch_threads :: String -> String -> FilePath -> IO ()
  dispatch_threads username command serverlist = do
-     hostlist <- readFile serverlist
-     let hosts = lines hostlist
-         makeThread server = forkIO $ runCommandOnHost server username command
+     hosts <- parse_serverlist serverlist
+     let makeThread (Just (ServerAddress server port)) = forkIO $ runCommandOnHost server port username command
+         makeThread Nothing = forkIO $ putStrLn "Bad address ignored"
        in do
-       mapM_ makeThread hosts  
+       mapM_ makeThread hosts
+
  block :: IO ()
  block = interact $ take 1
+ 
+ 
+ demangle_server :: Monad m => String -> m (Maybe ServerAddress)
+ demangle_server serverstring =
+   let (address:port) = T.splitOn (T.pack ":") (T.pack serverstring)
+   in return $ case port of
+         [] -> Just (ServerAddress (T.unpack address) 22)
+         [p] -> Just (ServerAddress (T.unpack address) $ read $ T.unpack p)
+         _ -> Nothing
 
+ parse_serverlist :: FilePath -> IO [Maybe ServerAddress]
+ parse_serverlist listpath = do
+  thelist <- readFile listpath
+  let thelines = lines thelist
+    in mapM demangle_server thelines
+ 
  main :: IO ()
  main = do
    args <- getArgs
