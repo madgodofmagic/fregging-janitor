@@ -32,25 +32,30 @@
  buildCommandAction command session = execCommand session command
 
 
+
+
  dispatch_threads :: String -> String -> FilePath -> IO ()
  dispatch_threads username command serverlist = do
      hosts <- parse_serverlist serverlist
-     let makeThread (Just (ServerAddress server port)) = forkIO $ runCommandOnHost server port username command
-         makeThread Nothing = forkIO $ putStrLn "Bad address ignored"
-       in do
+     let makeThread (Just (ServerAddress server port)) = do _ <- ($) forkIO $ runCommandOnHost server port username command
+                                                            return ()
+         makeThread Nothing = do return ()
+       in
        mapM_ makeThread hosts
 
  block :: IO ()
  block = interact $ take 1
  
  
- demangle_server :: Monad m => String -> m (Maybe ServerAddress)
+ demangle_server :: [Char] -> IO (Maybe ServerAddress)
  demangle_server serverstring =
    let (address:port) = T.splitOn (T.pack ":") (T.pack serverstring)
-   in return $ case port of
-         [] -> Just (ServerAddress (T.unpack address) 22)
-         (p:[]) -> Just (ServerAddress (T.unpack address) $ read $ T.unpack p)
-         (_:_) -> Nothing
+   in case port of
+         [] -> return $ Just (ServerAddress (T.unpack address) 22)
+         (p:[]) -> return $ Just (ServerAddress (T.unpack address) $ read $ T.unpack p)
+         (_:_) -> do
+           putStrLn $ "Ignoring bogus line: " ++ serverstring
+           return Nothing
 
  parse_serverlist :: FilePath -> IO [Maybe ServerAddress]
  parse_serverlist listpath = do
@@ -65,6 +70,6 @@
    case args of
      (username:command:serverlist:[]) -> do
        putStrLn $ "Running " ++ command ++ " as " ++ username
-       dispatch_threads username command serverlist
+       _ <- dispatch_threads username command serverlist
        block
      _ -> fail $ "Usage: " ++ myname ++ " remote_username command serverlist_filename"
