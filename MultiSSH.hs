@@ -56,7 +56,7 @@ demangle_server serverstring =
   let (address:port) = map T.unpack $ T.splitOn (T.pack ":") (T.pack serverstring)
   in case port of
         [] -> return $ Just (ServerAddress (address) 22)
-        (p:[]) -> if (((readMaybe $ p) :: Maybe Integer) == Nothing) then do
+        (p:[]) -> if (((readMaybe p) :: Maybe Integer) == Nothing) then do
           putStrLn $ "Port not an integer: " ++ p ++ " in " ++ address
           return Nothing
                            else return $ Just (ServerAddress (address) $ read $ p)
