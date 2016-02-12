@@ -49,8 +49,8 @@
    let (address:port) = T.splitOn (T.pack ":") (T.pack serverstring)
    in return $ case port of
          [] -> Just (ServerAddress (T.unpack address) 22)
-         [p] -> Just (ServerAddress (T.unpack address) $ read $ T.unpack p)
-         _ -> Nothing
+         (p:[]) -> Just (ServerAddress (T.unpack address) $ read $ T.unpack p)
+         (_:_) -> Nothing
 
  parse_serverlist :: FilePath -> IO [Maybe ServerAddress]
  parse_serverlist listpath = do
