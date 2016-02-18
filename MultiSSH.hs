@@ -37,7 +37,7 @@ runCommandOnHost host port username command = do
     Left err -> putStrLn $ show err ++ " error raised on " ++ host
     Right (Result stdOut stdErr exitCode) ->
       let prettify = read . show in
-      putStr $ "Host:" ++ host ++ "\n" ++ "Out: " ++ (prettify stdOut) ++ "Err: " ++ (prettify stdErr) ++ "Exit: " ++ show exitCode ++ "\n\n"
+      putStr $ foldl (++) "Host: " [host,"\n","Out: ",prettify stdOut,"Err: ",prettify stdErr,"Exit: ",show exitCode,"\n\n"]
 
 buildCommandAction :: String -> Session -> SimpleSSH Result
 buildCommandAction command session = execCommand session command
