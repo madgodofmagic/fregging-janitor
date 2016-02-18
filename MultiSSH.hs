@@ -11,6 +11,7 @@ import Control.Concurrent
 import System.Environment
 import System.Posix.User
 import Text.Read
+
 import qualified Data.Text as T
 data SSHEnv = SSHEnv String String String String
 data ServerAddress = ServerAddress String Integer
@@ -34,7 +35,9 @@ runCommandOnHost host port username command = do
   res <- runSimpleSSH $ client $ buildCommandAction command
   case res of
     Left err -> putStrLn $ show err ++ " error raised on " ++ host
-    Right goodres -> print goodres
+    Right (Result stdOut stdErr exitCode) ->
+      let prettify = read . show in
+      putStr $ "Host:" ++ host ++ "\n" ++ "Out: " ++ (prettify stdOut) ++ "Err: " ++ (prettify stdErr) ++ "Exit: " ++ show exitCode ++ "\n\n"
 
 buildCommandAction :: String -> Session -> SimpleSSH Result
 buildCommandAction command session = execCommand session command
