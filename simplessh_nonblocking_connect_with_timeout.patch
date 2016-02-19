@@ -1,6 +1,6 @@
 diff -rN -u old-simplessh/cbits/simplessh.c new-simplessh/cbits/simplessh.c
---- old-simplessh/cbits/simplessh.c	2016-02-19 14:03:27.012905109 +0000
-+++ new-simplessh/cbits/simplessh.c	2016-02-19 14:03:27.012905109 +0000
+--- old-simplessh/cbits/simplessh.c	2016-02-19 19:31:35.453139711 +0000
++++ new-simplessh/cbits/simplessh.c	2016-02-19 19:31:35.454139705 +0000
 @@ -7,7 +7,7 @@
  #include <netdb.h>
  #include <errno.h>
@@ -19,7 +19,7 @@ diff -rN -u old-simplessh/cbits/simplessh.c new-simplessh/cbits/simplessh.c
    struct addrinfo hints;
    memset(&hints, 0, sizeof(struct addrinfo));
    hints.ai_family   = AF_UNSPEC;
-@@ -70,20 +70,32 @@
+@@ -70,20 +70,36 @@
        sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
      } while(sock == -1 && errno == EINTR);
      if(sock == -1) continue;
@@ -32,9 +32,6 @@ diff -rN -u old-simplessh/cbits/simplessh.c new-simplessh/cbits/simplessh.c
 -        struct pollfd pollfd;
 -        pollfd.fd     = sock;
 -        pollfd.events = POLLIN;
--
--        rc = poll(&pollfd, 1, -1);
--      } while(rc == -1 && errno == EINTR);
 +    struct timeval  timeout;
 +    timeout.tv_sec = timeout_secs;
 +    timeout.tv_usec = 0;
@@ -46,24 +43,31 @@ diff -rN -u old-simplessh/cbits/simplessh.c new-simplessh/cbits/simplessh.c
 +    fcntl(sock, F_SETFL, O_NONBLOCK);
 +
 +    if ( (rc = status = connect(sock, res->ai_addr, res->ai_addrlen)) == -1)
-+    {
++      {
 +        if ( errno != EINPROGRESS && errno != EWOULDBLOCK ) {
-+            perror("connect");
-+            return -1;
-+            }
++          perror("connect");
++          freeaddrinfo(res);
++          return -1;
++        }
  
+-        rc = poll(&pollfd, 1, -1);
+-      } while(rc == -1 && errno == EINTR);
+-
 -      if((rc & POLLIN) != POLLIN) rc = 0;
-     }
++      }
 +    do {
 +      rc = status = select(sock+1, NULL, &set, NULL, &timeout);
-+  } while (status == -1 && errno == EINTR);
++    } while (status == -1 && errno == EINTR);
 +    
-+    if((status == -1 && errno != EINTR) || status == 0) return -1;
++    if((status == -1 && errno != EINTR) || status == 0) {
++      freeaddrinfo(res);
++      return -1;
+     }
 +    fcntl(sock,F_SETFL,0);
  
      if(rc != -1) {
        freeaddrinfo(res);
-@@ -100,7 +112,7 @@
+@@ -100,7 +116,7 @@
  struct simplessh_either *simplessh_open_session(
      const char *hostname,
      uint16_t port,
@@ -72,7 +76,7 @@ diff -rN -u old-simplessh/cbits/simplessh.c new-simplessh/cbits/simplessh.c
    struct simplessh_either *either;
    struct simplessh_session *session;
    LIBSSH2_KNOWNHOSTS *knownhosts;
-@@ -123,14 +135,14 @@
+@@ -123,14 +139,14 @@
    either->u.value = session;
  
    // Connection initialisation
@@ -91,8 +95,8 @@ diff -rN -u old-simplessh/cbits/simplessh.c new-simplessh/cbits/simplessh.c
    if(rc) returnLocalErrorSP(HANDSHAKE);
  
 diff -rN -u old-simplessh/include/simplessh.h new-simplessh/include/simplessh.h
---- old-simplessh/include/simplessh.h	2016-02-19 14:03:27.012905109 +0000
-+++ new-simplessh/include/simplessh.h	2016-02-19 14:03:27.012905109 +0000
+--- old-simplessh/include/simplessh.h	2016-02-19 19:31:35.453139711 +0000
++++ new-simplessh/include/simplessh.h	2016-02-19 19:31:35.454139705 +0000
 @@ -8,7 +8,8 @@
  struct simplessh_either *simplessh_open_session(
    const char*,
@@ -104,8 +108,8 @@ diff -rN -u old-simplessh/include/simplessh.h new-simplessh/include/simplessh.h
  struct simplessh_either *simplessh_authenticate_password(
    struct simplessh_session*,
 diff -rN -u old-simplessh/simplessh.cabal new-simplessh/simplessh.cabal
---- old-simplessh/simplessh.cabal	2016-02-19 14:03:27.011905115 +0000
-+++ new-simplessh/simplessh.cabal	2016-02-19 14:03:27.012905109 +0000
+--- old-simplessh/simplessh.cabal	2016-02-19 19:31:35.453139711 +0000
++++ new-simplessh/simplessh.cabal	2016-02-19 19:31:35.454139705 +0000
 @@ -1,5 +1,5 @@
  name:                simplessh
 -version:             0.2.0.5
@@ -128,8 +132,8 @@ diff -rN -u old-simplessh/simplessh.cabal new-simplessh/simplessh.cabal
 +--  tag:               0.2.0.5
 \ No newline at end of file
 diff -rN -u old-simplessh/src/Network/SSH/Client/SimpleSSH/Foreign.hs new-simplessh/src/Network/SSH/Client/SimpleSSH/Foreign.hs
---- old-simplessh/src/Network/SSH/Client/SimpleSSH/Foreign.hs	2016-02-19 14:03:27.012905109 +0000
-+++ new-simplessh/src/Network/SSH/Client/SimpleSSH/Foreign.hs	2016-02-19 14:03:27.012905109 +0000
+--- old-simplessh/src/Network/SSH/Client/SimpleSSH/Foreign.hs	2016-02-19 19:31:35.454139705 +0000
++++ new-simplessh/src/Network/SSH/Client/SimpleSSH/Foreign.hs	2016-02-19 19:31:35.454139705 +0000
 @@ -55,6 +55,7 @@
    openSessionC :: CString
                 -> CUShort
@@ -139,8 +143,8 @@ diff -rN -u old-simplessh/src/Network/SSH/Client/SimpleSSH/Foreign.hs new-simple
  
  foreign import ccall "simplessh_authenticate_password"
 diff -rN -u old-simplessh/src/Network/SSH/Client/SimpleSSH.hs new-simplessh/src/Network/SSH/Client/SimpleSSH.hs
---- old-simplessh/src/Network/SSH/Client/SimpleSSH.hs	2016-02-19 14:03:27.012905109 +0000
-+++ new-simplessh/src/Network/SSH/Client/SimpleSSH.hs	2016-02-19 14:03:27.012905109 +0000
+--- old-simplessh/src/Network/SSH/Client/SimpleSSH.hs	2016-02-19 19:31:35.453139711 +0000
++++ new-simplessh/src/Network/SSH/Client/SimpleSSH.hs	2016-02-19 19:31:35.454139705 +0000
 @@ -104,13 +104,14 @@
  openSession :: String  -- ^ Hostname
              -> Integer -- ^ Port
