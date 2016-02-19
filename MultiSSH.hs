@@ -3,8 +3,7 @@
 -- TODO: Optionally allow custom remote username for a server
 -- TODO: Allow different key algorithms and/or custom key locations
 -- BUG: Probably upstream - segfault when cwd not included in relative path UPDATE: Yeah this is libssh2 being difficult
--- CAVEAT: There doesn't seem to be a good way to force a timeout or even cancel a connection if it's waiting for the handshake to complete, the timeout here only cancels long command execution, the ssh timeout will always be based on system-wide defaults (TODO: Find a less minimalistic ssh lib)
--- Until then a. interrupt the process b. set a tcp timeout system-wide or c. don't put dead servers (i.e. the destinations which won't respond with an RST) in the config
+-- Timeouts now work even for the initial connect(), but you need to use a modified version of simplessh - patch attached
 -- TODO: allow passphrase to be entered before opening key
 import Network.SSH.Client.SimpleSSH
 import Control.Monad.Parallel as ParM
