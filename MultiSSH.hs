@@ -26,12 +26,8 @@ buildenv key_algorithm = do
       privkey = ssh_dir ++ "/id_" ++ key_algorithm
   return $ SSHEnv known_hosts pubkey privkey passphrase
 
-
-
-
-
 runCommandOnHost
-  :: [Char] -> Integer -> String -> String -> Integer -> IO ()
+  :: String -> Integer -> String -> String -> Integer -> IO [Char]
 runCommandOnHost host port username command timeout_secs = do
   -- assume rsa
   (SSHEnv known_hosts pubkey privkey passphrase) <- buildenv "rsa"
@@ -43,33 +39,26 @@ runCommandOnHost host port username command timeout_secs = do
         Just(goodres) -> goodres
   case res of
     Left err -> do let message = show err ++ " error raised on " ++ host ++ "\n"
-                   putStr message
+                   return message
 
     Right (Result stdOut stdErr exitCode) -> do
-      putStrLn $ "Working on " ++ host
       let prettify = read . show
           message = foldl (++) "Host: " [host,"\n","Out: ",prettify stdOut,"Err: ",prettify stdErr,"Exit: ",show exitCode,"\n\n"]
-      putStrLn message
-
+      return message
 
 buildCommandAction :: String -> Session -> SimpleSSH Result
 buildCommandAction command session = execCommand session command
 
-
-
-
-
-
-
-
-dispatch_threads :: String -> String -> FilePath -> Integer -> IO ()
+dispatch_threads
+  :: String
+     -> String -> FilePath -> Integer -> IO [Maybe (IO [Char])]
 dispatch_threads username command serverlist timeout_secs = do
     hosts <- parse_serverlist serverlist
-    let makeThread (Just (ServerAddress server port)) = runCommandOnHost server port username command timeout_secs >> return ()
-                                                           
-        makeThread Nothing = return ()
+    let makeThread (Just (ServerAddress server port)) = do putStrLn $ "Working on " ++ server
+                                                           return $ Just $ runCommandOnHost server port username command timeout_secs
+        makeThread Nothing = return $ Nothing
       in
-      ParM.mapM_ makeThread hosts
+      ParM.mapM makeThread hosts
 
 demangle_server :: [Char] -> IO (Maybe ServerAddress)
 demangle_server serverstring =
@@ -96,7 +85,9 @@ main = do
   case args of
     (username:command:serverlist:timeout_secs:[]) -> do
       putStrLn $ "Running " ++ command ++ " as " ++ username
-      dispatch_threads username command serverlist $ read timeout_secs
-      putStrLn "Done."
+      results <- dispatch_threads username command serverlist $ read timeout_secs
+      Prelude.mapM_ (\x -> case x of
+                       Nothing -> return ()
+                       Just output -> output >>= putStr) results
     _ -> fail $ "Usage: " ++ myname ++ " remote_username command serverlist_filename timeout_secs"
     
