@@ -1,0 +1,190 @@
+diff -rN -u old-simplessh/cbits/simplessh.c new-simplessh/cbits/simplessh.c
+--- old-simplessh/cbits/simplessh.c	2016-02-19 12:01:51.614480350 +0000
++++ new-simplessh/cbits/simplessh.c	2016-02-19 12:01:51.614480350 +0000
+@@ -7,7 +7,7 @@
+ #include <netdb.h>
+ #include <errno.h>
+ #include <poll.h>
+-
++#include <fcntl.h>
+ #include <libssh2.h>
+ #include <simplessh.h>
+ 
+@@ -46,7 +46,7 @@
+   return rc;
+ }
+ 
+-inline int get_socket(const char *hostname, uint16_t port) {
++inline int get_socket(const char *hostname, uint16_t port, int timeout_secs) {
+   struct addrinfo hints;
+   memset(&hints, 0, sizeof(struct addrinfo));
+   hints.ai_family   = AF_UNSPEC;
+@@ -70,17 +70,41 @@
+       sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+     } while(sock == -1 && errno == EINTR);
+     if(sock == -1) continue;
++    int status;
++
++    struct timeval  timeout;
++    timeout.tv_sec = timeout_secs;
++    timeout.tv_usec = 0;
++
++    fd_set set;
++    FD_ZERO(&set);
++    FD_SET(sock, &set);
++
++    fcntl(sock, F_SETFL, O_NONBLOCK);
++
++    if ( (rc = status = connect(sock, res->ai_addr, res->ai_addrlen)) == -1)
++    {
++        if ( errno != EINPROGRESS && errno != EWOULDBLOCK ) {
++            perror("connect");
++            return -1;
++            }
++
++    }
++    rc = status = select(sock+1, NULL, &set, NULL, &timeout);
++    
++    if(status == -1 || status == 0) return -1;
++    fcntl(sock,F_SETFL,0);
+ 
+-    rc = connect(sock, res->ai_addr, res->ai_addrlen);
++//    rc = connect(sock, res->ai_addr, res->ai_addrlen);
+ 
+-    if(rc == -1 && errno == EINTR) {
++    if(rc == -1 && errno ==( EINTR || EWOULDBLOCK || EINPROGRESS)) {
+       do {
+         struct pollfd pollfd;
+         pollfd.fd     = sock;
+         pollfd.events = POLLIN;
+ 
+         rc = poll(&pollfd, 1, -1);
+-      } while(rc == -1 && errno == EINTR);
++      } while(rc == -1 && errno == (EINTR || EWOULDBLOCK || EINPROGRESS));
+ 
+       if((rc & POLLIN) != POLLIN) rc = 0;
+     }
+@@ -100,7 +124,7 @@
+ struct simplessh_either *simplessh_open_session(
+     const char *hostname,
+     uint16_t port,
+-    const char *knownhosts_path) {
++    const char *knownhosts_path, int timeout_secs) {
+   struct simplessh_either *either;
+   struct simplessh_session *session;
+   LIBSSH2_KNOWNHOSTS *knownhosts;
+@@ -123,14 +147,14 @@
+   either->u.value = session;
+ 
+   // Connection initialisation
+-  session->sock = get_socket(hostname, port);
++  session->sock = get_socket(hostname, port, timeout_secs);
+   if(session->sock == -1) returnError(either, CONNECT);
+ 
+   session->lsession = libssh2_session_init();
+   if(!session) returnLocalErrorSP(INIT);
+-
++  
+   libssh2_session_set_blocking(session->lsession, 0);
+-
++  
+   while((rc = libssh2_session_handshake(session->lsession, session->sock)) == LIBSSH2_ERROR_EAGAIN);
+   if(rc) returnLocalErrorSP(HANDSHAKE);
+ 
+diff -rN -u old-simplessh/include/simplessh.h new-simplessh/include/simplessh.h
+--- old-simplessh/include/simplessh.h	2016-02-19 12:01:51.614480350 +0000
++++ new-simplessh/include/simplessh.h	2016-02-19 12:01:51.614480350 +0000
+@@ -8,7 +8,8 @@
+ struct simplessh_either *simplessh_open_session(
+   const char*,
+   uint16_t,
+-  const char*);
++  const char*,
++  int);
+ 
+ struct simplessh_either *simplessh_authenticate_password(
+   struct simplessh_session*,
+diff -rN -u old-simplessh/simplessh.cabal new-simplessh/simplessh.cabal
+--- old-simplessh/simplessh.cabal	2016-02-19 12:01:51.614480350 +0000
++++ new-simplessh/simplessh.cabal	2016-02-19 12:01:51.614480350 +0000
+@@ -1,5 +1,5 @@
+ name:                simplessh
+-version:             0.2.0.5
++version:             0.2.0.666
+ synopsis:            Simple wrapper around libssh2
+ description:         It supports authentication by password or keys. Everything is in the SimpleSSH monad which is ErrorT SimpleSSHError IO, allowing to manage errors in a "haskeller" way.
+ license:             BSD3
+@@ -32,7 +32,7 @@
+   cc-options:        -Wall -g
+   ghc-options:       -Wall
+ 
+-source-repository head
+-  type:              darcs
+-  location:          http://hub.darcs.net/thoferon/simplessh
+-  tag:               0.2.0.5
+\ No newline at end of file
++--source-repository head
++--  type:              darcs
++--  location:          http://hub.darcs.net/thoferon/simplessh
++--  tag:               0.2.0.5
+\ No newline at end of file
+diff -rN -u old-simplessh/src/Network/SSH/Client/SimpleSSH/Foreign.hs new-simplessh/src/Network/SSH/Client/SimpleSSH/Foreign.hs
+--- old-simplessh/src/Network/SSH/Client/SimpleSSH/Foreign.hs	2016-02-19 12:01:51.614480350 +0000
++++ new-simplessh/src/Network/SSH/Client/SimpleSSH/Foreign.hs	2016-02-19 12:01:51.615480344 +0000
+@@ -55,6 +55,7 @@
+   openSessionC :: CString
+                -> CUShort
+                -> CString
++               -> CInt
+                -> IO CEither
+ 
+ foreign import ccall "simplessh_authenticate_password"
+diff -rN -u old-simplessh/src/Network/SSH/Client/SimpleSSH.hs new-simplessh/src/Network/SSH/Client/SimpleSSH.hs
+--- old-simplessh/src/Network/SSH/Client/SimpleSSH.hs	2016-02-19 12:01:51.614480350 +0000
++++ new-simplessh/src/Network/SSH/Client/SimpleSSH.hs	2016-02-19 12:01:51.614480350 +0000
+@@ -104,13 +104,14 @@
+ openSession :: String  -- ^ Hostname
+             -> Integer -- ^ Port
+             -> String  -- ^ Path to the known hosts (e.g. ~/.ssh/known_hosts)
++            -> Integer -- ^ Connect() timeout in seconds
+             -> SimpleSSH Session
+-openSession hostname port knownhostsPath = liftIOEither $ do
++openSession hostname port knownhostsPath timeout_secs = liftIOEither $ do
+   hostnameC       <- newCString hostname
+   knownhostsPathC <- newCString knownhostsPath
+   let portC = fromInteger port
+-
+-  res <- liftEitherC (return . Session) $ openSessionC hostnameC portC knownhostsPathC
++      timeout_secsC = fromInteger timeout_secs
++  res <- liftEitherC (return . Session) $ openSessionC hostnameC portC knownhostsPathC timeout_secsC
+ 
+   free hostnameC
+   free knownhostsPathC
+@@ -201,10 +202,11 @@
+                     -> String                   -- ^ Path to known_hosts
+                     -> String                   -- ^ Username
+                     -> String                   -- ^ Password
++                    -> Integer                  -- ^ Connect() timeout
+                     -> (Session -> SimpleSSH a) -- ^ Monadic action on the session
+                     -> SimpleSSH a
+-withSessionPassword hostname port knownhostsPath username password action = do
+-  session              <- openSession hostname port knownhostsPath
++withSessionPassword hostname port knownhostsPath username password connect_timeout action = do
++  session              <- openSession hostname port knownhostsPath connect_timeout
+   authenticatedSession <- authenticateWithPassword session username password
+   res                  <- action authenticatedSession
+   closeSession authenticatedSession
+@@ -220,10 +222,11 @@
+                -> String                   -- ^ Path to public key
+                -> String                   -- ^ Path to private key
+                -> String                   -- ^ Passphrase
++               -> Integer                  -- ^ connect() timeout
+                -> (Session -> SimpleSSH a) -- ^ Monadic action on the session
+                -> SimpleSSH a
+-withSessionKey hostname port knownhostsPath username publicKeyPath privateKeyPath passphrase action = do
+-  session              <- openSession hostname port knownhostsPath
++withSessionKey hostname port knownhostsPath username publicKeyPath privateKeyPath passphrase connect_timeout action = do
++  session              <- openSession hostname port knownhostsPath connect_timeout
+   authenticatedSession <- authenticateWithKey session username publicKeyPath privateKeyPath passphrase
+   res                  <- action authenticatedSession
+   closeSession authenticatedSession

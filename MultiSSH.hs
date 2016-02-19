@@ -32,13 +32,13 @@ buildenv key_algorithm = do
 
 
 runCommandOnHost
-  :: [Char] -> Integer -> String -> String -> Int -> IO ()
+  :: [Char] -> Integer -> String -> String -> Integer -> IO ()
 runCommandOnHost host port username command timeout_secs = do
   -- assume rsa
   (SSHEnv known_hosts pubkey privkey passphrase) <- buildenv "rsa"
   
-  let client = withSessionKey host port known_hosts username pubkey privkey passphrase 
-  r <- timeout (timeout_secs * 1000000) $ runSimpleSSH $ client $ buildCommandAction command
+  let action = buildCommandAction command
+  r <- timeout (fromInteger $ timeout_secs * 1000000) $ runSimpleSSH $ withSessionKey host port known_hosts username pubkey privkey passphrase timeout_secs action
   let res = case r of
         Nothing -> Left(Connect)
         Just(goodres) -> goodres
@@ -63,7 +63,7 @@ buildCommandAction command session = execCommand session command
 
 
 
-dispatch_threads :: String -> String -> FilePath -> Int -> IO ()
+dispatch_threads :: String -> String -> FilePath -> Integer -> IO ()
 dispatch_threads username command serverlist timeout_secs = do
     hosts <- parse_serverlist serverlist
     let makeThread (Just (ServerAddress server port)) = runCommandOnHost server port username command timeout_secs >> return ()
