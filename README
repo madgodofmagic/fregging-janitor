@@ -1,3 +1,5 @@
-ghc --make -with-rtsopts=-N -threaded -static -O MultiSSH.hs
-OR
-cabal build
+copy patch to a simplessh 0.2.0.5 checkout and apply it, install that version
+come back here and cabal build, then run with:
+./dist/build/fregging-janitor/fregging-janitor remote_username command serverlist_filename timeout_secs
+serverlist is expected to be hostname:[port] for each server in its own line, it will gracefully let you know if it encounters non-integer ports, use a default of 22 if none is supplied, and should ignore any garbage
+timeout applies to tcp handshake for the most part, I don't think it can cancel the thread if execution takes too long
