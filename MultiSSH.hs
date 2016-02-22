@@ -73,9 +73,9 @@ demangle_server serverstring =
           putStrLn $ "Ignoring bogus line: " ++ serverstring
           return Nothing
 
-parse_serverlist :: FilePath -> IO [Maybe ServerAddress]
-parse_serverlist listpath = do
- thelist <- readFile listpath
+
+parse_serverlist :: String -> IO [Maybe ServerAddress]
+parse_serverlist thelist = do
  ParM.mapM demangle_server $ lines thelist
 
 main :: IO ()
@@ -83,11 +83,19 @@ main = do
   args <- getArgs
   myname <- getProgName
   case args of
-    (username:command:serverlist:timeout_secs:[]) -> do
+    (username:command:timeout_secs:serverlist:[]) -> do
+      thelist <- readFile serverlist
       putStrLn $ "Running " ++ command ++ " as " ++ username
-      results <- dispatch_threads username command serverlist $ read timeout_secs
-      Prelude.mapM_ (\x -> case x of
-                       Nothing -> return ()
-                       Just output -> output >>= putStr) results
-    _ -> fail $ "Usage: " ++ myname ++ " remote_username command serverlist_filename timeout_secs"
+      get_results username command thelist timeout_secs
+    (username:command:timeout_secs:[]) -> do
+      thelist <- getContents
+      putStrLn $ "Running " ++ command ++ " as " ++ username
+      get_results username command thelist timeout_secs
+    _ -> fail $ "Usage: " ++ myname ++ " remote_username command timeout_secs [serverlist_filename]"
     
+get_results :: String -> String -> FilePath -> String -> IO ()
+get_results username command serverlist timeout_secs = do
+       results <- dispatch_threads username command serverlist $ read timeout_secs
+       Prelude.mapM_ (\x -> case x of
+                         Nothing -> return ()
+                         Just output -> output >>= putStr) results
