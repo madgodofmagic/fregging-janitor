@@ -1,5 +1,4 @@
 -- build with -threaded or forkIO does nothing
--- TODO: Allow server list to be entered/piped in via stdin
 -- TODO: Optionally allow custom remote username for a server
 -- TODO: Allow different key algorithms and/or custom key locations
 -- BUG: Probably upstream - segfault when cwd not included in relative path UPDATE: Yeah this is libssh2 being difficult
@@ -85,17 +84,16 @@ main = do
   case args of
     (username:command:timeout_secs:serverlist:[]) -> do
       thelist <- readFile serverlist
-      putStrLn $ "Running " ++ command ++ " as " ++ username
       get_results username command thelist timeout_secs
     (username:command:timeout_secs:[]) -> do
       thelist <- getContents
-      putStrLn $ "Running " ++ command ++ " as " ++ username
       get_results username command thelist timeout_secs
     _ -> fail $ "Usage: " ++ myname ++ " remote_username command timeout_secs [serverlist_filename]"
     
 get_results :: String -> String -> FilePath -> String -> IO ()
 get_results username command serverlist timeout_secs = do
-       results <- dispatch_threads username command serverlist $ read timeout_secs
-       Prelude.mapM_ (\x -> case x of
-                         Nothing -> return ()
-                         Just output -> output >>= putStr) results
+  putStrLn $ "Running " ++ command ++ " as " ++ username
+  results <- dispatch_threads username command serverlist $ read timeout_secs
+  Prelude.mapM_ (\x -> case x of
+                    Nothing -> return ()
+                    Just output -> output >>= putStr) results
