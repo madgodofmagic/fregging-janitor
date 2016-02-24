@@ -16,7 +16,7 @@ data ServerAddress = ServerAddress String Integer
 
 buildenv :: [Char] -> IO SSHEnv
 buildenv key_algorithm = do
-  uentry <- (getLoginName >>= getUserEntryForName)
+  uentry <- (getEffectiveUserID >>= getUserEntryForID)
   -- assume no passphrase
   let passphrase = ""
       ssh_dir = (homeDirectory uentry) ++ "/.ssh"
@@ -73,8 +73,9 @@ demangle_server serverstring =
           return Nothing
 
 
+
 parse_serverlist :: String -> IO [Maybe ServerAddress]
-parse_serverlist thelist = do
+parse_serverlist thelist =
  ParM.mapM demangle_server $ lines thelist
 
 main :: IO ()
